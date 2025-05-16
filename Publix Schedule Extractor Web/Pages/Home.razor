@@ -1,0 +1,65 @@
+﻿@page "/"
+@using System.Text
+@using Ical.Net
+@using Ical.Net.Serialization;
+@using BlazorDownloadFile;
+@namespace Publix_Schedule_Extractor
+@inject IJSRuntime JS
+
+<PageTitle>Home</PageTitle>
+<center>
+    <h1>Upload Schedule</h1>
+    <FluentInputFile OnInputFileChange="LoadFiles" Multiple/>
+</center>
+
+@code {
+    [Inject] IBlazorDownloadFileService BlazorDownloadFileService { get; set; }
+
+    private long maxFileSize = 2000000;
+    private int maxAllowedFiles = 1;
+    private string htmlContent = "";
+
+    private async void LoadFiles(InputFileChangeEventArgs e)
+    {
+        foreach (var file in e.GetMultipleFiles(maxAllowedFiles))
+        {
+            try
+            {
+                var buffer = new byte[file.Size];
+                await file.OpenReadStream(maxFileSize).ReadAsync(buffer);
+                htmlContent = System.Text.Encoding.UTF8.GetString(buffer);
+
+                await Task.Run(() =>
+                {
+                    HTMLParser.GetEventsFromFile(htmlContent, out List<(DateTime start, DateTime end)> shifts, out List<(DateTime start, DateTime end)> meals);
+
+                    Calendar calendar = new();
+
+                    foreach (var (start, end) in shifts)
+                    {
+                        IcalManager.AddEvent(start, end, "Work", ref calendar);
+                    }
+
+                    foreach (var (start, end) in meals)
+                    {
+                        IcalManager.AddEvent(start, end, "Meal", ref calendar);
+                    }
+
+                    var serializer = new CalendarSerializer();
+                    var serializedCalendar = serializer.SerializeToString(calendar);
+
+                    byte[] data = Encoding.ASCII.GetBytes(serializedCalendar);
+
+                    string file_download = Convert.ToBase64String(data);
+
+                    BlazorDownloadFileService.DownloadFile("work.ics", file_download, "application/octet-stream");
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("File: {FileName} Error: {Error}",
+                    file.Name, ex.Message);
+            }
+        }
+    }
+}

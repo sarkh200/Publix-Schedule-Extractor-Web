@@ -15,7 +15,7 @@
 @code {
     [Inject] IBlazorDownloadFileService BlazorDownloadFileService { get; set; }
 
-    private long maxFileSize = 2000000;
+    private long maxFileSize = 20000000;
     private int maxAllowedFiles = 1;
     private string htmlContent = "";
 
@@ -25,9 +25,22 @@
         {
             try
             {
-                var buffer = new byte[file.Size];
-                await file.OpenReadStream(maxFileSize).ReadAsync(buffer);
-                htmlContent = System.Text.Encoding.UTF8.GetString(buffer);
+                htmlContent = "";
+                Console.WriteLine("Loading...");
+                try
+                {
+                    var tempFilePath = Path.GetTempFileName();
+                    await using (var stream = new FileStream(tempFilePath, FileMode.Create))
+                    {
+                        await e.File.OpenReadStream(e.File.Size).CopyToAsync(stream);
+                    }
+                    Console.WriteLine($"Uploaded to {tempFilePath}");
+                    htmlContent = File.ReadAllText(tempFilePath);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error: {ex.Message}");
+                }
 
                 await Task.Run(() =>
                 {
